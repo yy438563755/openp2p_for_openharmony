@@ -89,7 +89,7 @@ hvigorw assembleHap -p product=harmonyos
 
 ## 已知限制
 
-- **VPN 依赖系统能力。** 部分 OpenHarmony 镜像（如部分 DAYU200）`const.product.supportVpn` 为空或为 0 时，三方 `VpnExtensionAbility` 无法拉起（常见错误码 `2097152`）。此时节点仍可能显示在线，但虚拟 IP / SD-WAN ping 不通。
+- **OpenHarmony 当前不可用（系统缺陷）。** SD-WAN 依赖三方 `VpnExtensionAbility` 创建 TUN。OpenHarmony 侧存在系统 bug / 能力缺失（例如 `const.product.supportVpn` 为空或为 0，拉起扩展常见错误码 `2097152`），**不是本应用实现问题**。节点登录后仍可能显示在线，但虚拟网卡建不起来，SD-WAN / 虚拟 IP ping 不通。请用 **HarmonyOS NEXT** 真机验证完整组网；OpenHarmony 产物仅作编译与后续系统修复后的对接保留。
 - **商用 HarmonyOS** 对 `MANAGE_VPN` 和三方 VPN 扩展往往更严，需在目标机型上单独验证。
 - 仅打包 **arm64-v8a**。
 - 老版本 HarmonyOS 2/3/4（Android 兼容层）**不能**安装本应用。
@@ -120,4 +120,4 @@ build-profile.json5       Product：default / harmonyos
 
 A community **OpenHarmony / HarmonyOS NEXT** client for [OpenP2P](https://github.com/openp2p-cn/openp2p): token login, in-app console WebView, and SD-WAN via `VpnExtensionAbility`. This is **not** an official OpenP2P app. The P2P core remains upstream Go (`libopenp2p.so`); this repo adds ArkTS UI, a NAPI `dlopen` bridge, and TUN plumbing.
 
-Build two products from the same tree: `default` (OpenHarmony API 20) and `harmonyos` (HarmonyOS 6.0 / API 20). Place `libopenp2p.so` at `entry/libs/arm64-v8a/`, configure signing in DevEco, then assemble. VPN depends on the OS image; some boards and commercial HarmonyOS builds block third-party VPN extensions. Licensed under MIT. Do not use this software for illegal purposes.
+Build two products from the same tree: `default` (OpenHarmony API 20) and `harmonyos` (HarmonyOS 6.0 / API 20). Place `libopenp2p.so` at `entry/libs/arm64-v8a/`, configure signing in DevEco, then assemble. **OpenHarmony is currently unsupported** because of an OS bug/missing third-party VPN (`VpnExtensionAbility` / TUN); use HarmonyOS NEXT for a working SD-WAN path. Commercial HarmonyOS builds may still restrict `MANAGE_VPN`. Licensed under MIT. Do not use this software for illegal purposes.
