@@ -1,0 +1,32 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "OpenP2P HarmonyOS client"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "OpenP2P login and control"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "OpenP2P"
+    },
+    {
+      "name": "VpnAbility_desc",
+      "value": "OpenP2P SD-WAN VPN extension"
+    },
+    {
+      "name": "perm_internet_reason",
+      "value": "Connect to OpenP2P server and peers"
+    },
+    {
+      "name": "perm_netinfo_reason",
+      "value": "Query network state for P2P connectivity"
+    },
+    {
+      "name": "perm_vpn_reason",
+      "value": "Create virtual NIC for OpenP2P SD-WAN traffic"
+    }
+  ]
+}

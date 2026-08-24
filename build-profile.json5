@@ -1,0 +1,69 @@
+{
+  "app": {
+    "signingConfigs": [
+
+    ],
+    // 一份源码、两套产物：
+    // - default     OpenHarmony API 20（当前默认，沿用 OpenHarmony 签名）
+    // - harmonyos   HarmonyOS NEXT / 鸿蒙 6.0 API 20（需安装 HarmonyOS SDK，并在 DevEco 里配置 harmonyos 签名）
+    // 命令行示例：
+    //   hvigorw assembleHap -p product=default
+    //   hvigorw assembleHap -p product=harmonyos
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+        "compatibleSdkVersion": "20",
+        "compileSdkVersion": "20",
+        "runtimeOS": "OpenHarmony",
+        "buildOption": {
+          "nativeCompiler": "BiSheng",
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          }
+        }
+      },
+      {
+        "name": "harmonyos",
+        "compatibleSdkVersion": "6.0.0(20)",
+        "compileSdkVersion": "6.0.0(20)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          }
+        }
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug",
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        },
+        {
+          "name": "harmonyos",
+          "applyToProducts": [
+            "harmonyos"
+          ]
+        }
+      ]
+    }
+  ]
+}
