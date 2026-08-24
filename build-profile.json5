@@ -1,8 +1,6 @@
 {
   "app": {
-    "signingConfigs": [
-
-    ],
+    "signingConfigs": [],
     // 一份源码、两套产物：
     // - default     OpenHarmony API 20（当前默认，沿用 OpenHarmony 签名）
     // - harmonyos   HarmonyOS NEXT / 鸿蒙 6.0 API 20（需安装 HarmonyOS SDK，并在 DevEco 里配置 harmonyos 签名）
@@ -12,7 +10,6 @@
     "products": [
       {
         "name": "default",
-        "signingConfig": "default",
         "compatibleSdkVersion": "20",
         "compileSdkVersion": "20",
         "runtimeOS": "OpenHarmony",

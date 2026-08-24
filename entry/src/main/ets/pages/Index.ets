@@ -12,7 +12,7 @@ const CONSOLE_URL = 'https://console.openp2p.cn/profile';
 @Entry
 @Component
 struct Index {
-  @State token: string = '16519229202410053078';
+  @State token: string = '';
   @State onlineState: string = '未登录';
   @State loginLabel: string = '登录';
   @State helpText: string =
