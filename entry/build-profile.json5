@@ -41,6 +41,16 @@
       "name": "default"
     },
     {
+      "name": "harmonyos",
+      "config": {
+        "deviceType": [
+          "phone",
+          "tablet",
+          "2in1"
+        ]
+      }
+    },
+    {
       "name": "ohosTest",
     }
   ]

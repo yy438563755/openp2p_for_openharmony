@@ -28,6 +28,18 @@
             "useNormalizedOHMUrl": true
           }
         }
+      },
+      {
+        "name": "harmonyos",
+        "compatibleSdkVersion": "6.0.0(20)",
+        "compileSdkVersion": "6.0.0(20)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          }
+        }
       }
     ],
     "buildModeSet": [
@@ -48,6 +60,12 @@
           "name": "default",
           "applyToProducts": [
             "default"
+          ]
+        },
+        {
+          "name": "harmonyos",
+          "applyToProducts": [
+            "harmonyos"
           ]
         }
       ]
