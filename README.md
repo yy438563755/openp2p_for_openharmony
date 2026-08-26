@@ -4,7 +4,20 @@
 
 本仓库**不是** OpenP2P 官方应用，而是社区向的 Stage 模型移植。P2P / 打洞 / 组网核心仍来自上游 Go 实现，本仓库提供 ArkTS 界面、NAPI 桥接和 `VpnExtensionAbility`。
 
+- **OpenHarmony**：已适配。因系统自身 bug，三方 VPN 授权对话框缺失，使用前需**自行安装**仓库根目录的 [`VpnDialog.hap`](VpnDialog.hap)。
+- **HarmonyOS NEXT**：源码已支持，**需自行编译** `harmonyos` 产物（本仓库不提供预编译 HarmonyOS HAP）。
+
 [English](#english)
+
+## 界面展示
+
+登录后 VPN 数据面就绪（探测网关成功）：
+
+![OpenP2P 客户端在线](image/screenshot-20260826-100415.png)
+
+控制台中 Android 与 OpenHarmony 节点同时在线：
+
+![OpenP2P 控制台节点列表](image/screenshot-20260826-100223.png)
 
 ## 功能
 
@@ -62,16 +75,37 @@ entry/libs/arm64-v8a/libopenp2p.so
 
 请勿把调试证书、`.p12` / `.p7b` 和个人 Token 提交进 Git。
 
-## 编译与运行
+## 安装与运行
+
+### OpenHarmony（已适配）
+
+因 OpenHarmony 系统 bug，设备上往往没有三方 VPN 授权界面，需要先安装本仓库附带的 `VpnDialog.hap`，再安装客户端。
+
+```bash
+hdc install VpnDialog.hap
+hdc install OpenHarmony.hap
+```
+
+若你自行编译 `default` 产物，把第二步换成自己打出的 HAP 即可。`VpnDialog.hap` 仍必须先装，否则登录后 VPN 扩展无法弹出授权、TUN 建不起来。
+
+### HarmonyOS NEXT（需自行编译）
+
+商用鸿蒙请用 DevEco 打开本仓库，配置 HarmonyOS SDK **6.0.0(20)** 与签名，选择 Product **`harmonyos`** 后编译安装。仓库**不提供**预编译 HarmonyOS HAP。
+
+```bash
+hvigorw assembleHap -p product=harmonyos
+```
+
+HarmonyOS 一般自带 VPN 授权流程，**不必**安装 `VpnDialog.hap`。
+
+### 从源码编译（可选）
 
 1. 用 DevEco Studio 打开本仓库，等待 Ohpm / hvigor 同步。
 2. 在 **File → Project Structure → Signing Configs** 配置调试签名（克隆后的工程不含本地签名材料）。
 3. 选择 Product：
    - `default`：OpenHarmony
-   - `harmonyos`：HarmonyOS NEXT
-4. 安装到 arm64 设备或模拟器。
-
-命令行示例：
+   - `harmonyos`：HarmonyOS NEXT（需自行编译）
+4. 安装到 arm64 设备。OpenHarmony 真机请先安装 `VpnDialog.hap`。
 
 ```bash
 hvigorw assembleHap -p product=default
@@ -89,8 +123,8 @@ hvigorw assembleHap -p product=harmonyos
 
 ## 已知限制
 
-- **OpenHarmony 当前不可用（系统缺陷）。** SD-WAN 依赖三方 `VpnExtensionAbility` 创建 TUN。OpenHarmony 侧存在系统 bug / 能力缺失（例如 `const.product.supportVpn` 为空或为 0，拉起扩展常见错误码 `2097152`），**不是本应用实现问题**。节点登录后仍可能显示在线，但虚拟网卡建不起来，SD-WAN / 虚拟 IP ping 不通。请用 **HarmonyOS NEXT** 真机验证完整组网；OpenHarmony 产物仅作编译与后续系统修复后的对接保留。
-- **商用 HarmonyOS** 对 `MANAGE_VPN` 和三方 VPN 扩展往往更严，需在目标机型上单独验证。
+- **OpenHarmony 必须自行安装 `VpnDialog.hap`。** 系统缺少三方 VPN 授权对话框（OpenHarmony 自身 bug，不是本应用实现问题）。不装该 HAP 时，`VpnExtensionAbility` 无法完成授权，TUN / SD-WAN 建不起来；节点仍可能显示在线，但虚拟 IP ping 不通。请先 `hdc install VpnDialog.hap`，再安装客户端。
+- **HarmonyOS 需自行编译。** 请用 DevEco 选择 `harmonyos` 产物本地签名、打包、安装；本仓库只提供源码，不提供预编译 HarmonyOS HAP。商用机对 `MANAGE_VPN` 仍可能更严，需在目标机型上验证。
 - 仅打包 **arm64-v8a**。
 - 老版本 HarmonyOS 2/3/4（Android 兼容层）**不能**安装本应用。
 - 本客户端不包含 OpenP2P 服务端；中继与控制台仍使用上游公开网络（或你自建的网关）。
@@ -103,6 +137,9 @@ entry/src/main/ets/       ArkTS：登录、VPN、引擎封装
 entry/src/main/cpp/       NAPI 桥（libentry.so）
 entry/src/harmonyos/      HarmonyOS 产物的 module 覆盖（设备类型）
 entry/libs/arm64-v8a/     预编译 libopenp2p.so（需自行放入）
+image/                    界面与控制台截图
+OpenHarmony.hap           OpenHarmony 预编译客户端（可选）
+VpnDialog.hap             OpenHarmony 系统 VPN 授权缺失的补丁 HAP（必装）
 build-profile.json5       Product：default / harmonyos
 ```
 
@@ -120,4 +157,4 @@ build-profile.json5       Product：default / harmonyos
 
 A community **OpenHarmony / HarmonyOS NEXT** client for [OpenP2P](https://github.com/openp2p-cn/openp2p): token login, in-app console WebView, and SD-WAN via `VpnExtensionAbility`. This is **not** an official OpenP2P app. The P2P core remains upstream Go (`libopenp2p.so`); this repo adds ArkTS UI, a NAPI `dlopen` bridge, and TUN plumbing.
 
-Build two products from the same tree: `default` (OpenHarmony API 20) and `harmonyos` (HarmonyOS 6.0 / API 20). Place `libopenp2p.so` at `entry/libs/arm64-v8a/`, configure signing in DevEco, then assemble. **OpenHarmony is currently unsupported** because of an OS bug/missing third-party VPN (`VpnExtensionAbility` / TUN); use HarmonyOS NEXT for a working SD-WAN path. Commercial HarmonyOS builds may still restrict `MANAGE_VPN`. Licensed under MIT. Do not use this software for illegal purposes.
+**OpenHarmony is supported**, but you must install [`VpnDialog.hap`](VpnDialog.hap) first (OpenHarmony OS bug: missing third-party VPN consent UI). **HarmonyOS NEXT must be built yourself** (DevEco product `harmonyos`); this repo does not ship a prebuilt HarmonyOS HAP. Screenshots are under `image/`. Licensed under MIT. Do not use this software for illegal purposes.

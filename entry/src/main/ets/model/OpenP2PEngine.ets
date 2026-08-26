@@ -24,6 +24,14 @@ export class OpenP2PEngine {
     }
   }
 
+  static lastError(): string {
+    try {
+      return openp2p.lastError();
+    } catch (e) {
+      return '';
+    }
+  }
+
   static getToken(baseDir: string): string {
     try {
       return openp2p.getToken(baseDir);
@@ -75,9 +83,21 @@ export class OpenP2PEngine {
     }
   }
 
-  /** Blocking until a new SD-WAN config arrives. */
+  static getProbeStatus(): string {
+    try {
+      return openp2p.getProbeStatus();
+    } catch (_e) {
+      return '探测接口未就绪';
+    }
+  }
+
+  /** Blocking until a new SD-WAN config arrives. Do not use on main thread. */
   static getSdwanConfig(): ArrayBuffer {
     return openp2p.getSdwanConfig();
+  }
+
+  static async getSdwanConfigAsync(): Promise<ArrayBuffer> {
+    return await Promise.resolve(openp2p.getSdwanConfigAsync());
   }
 
   static ohosRead(pkt: ArrayBuffer | Uint8Array): void {
@@ -88,8 +108,55 @@ export class OpenP2PEngine {
     return openp2p.ohosWrite(timeoutMs, maxLen);
   }
 
+  static startTunPump(tunFd: number): boolean {
+    try {
+      return openp2p.startTunPump(tunFd);
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, 'startTunPump failed: %{public}s', JSON.stringify(e));
+      return false;
+    }
+  }
+
+  static stopTunPump(): void {
+    try {
+      openp2p.stopTunPump();
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, 'stopTunPump failed: %{public}s', JSON.stringify(e));
+    }
+  }
+
+  /** UI: AF_UNIX host bridging VPN TUN packets into Go. */
+  static startTunBridgeHost(sockPath: string): boolean {
+    try {
+      return openp2p.startTunBridgeHost(sockPath);
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, 'startTunBridgeHost failed: %{public}s', JSON.stringify(e));
+      return false;
+    }
+  }
+
+  /** VPN: AF_UNIX device bridging local TUN to UI Go. */
+  static startTunBridgeDevice(sockPath: string, tunFd: number): boolean {
+    try {
+      return openp2p.startTunBridgeDevice(sockPath, tunFd);
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, 'startTunBridgeDevice failed: %{public}s', JSON.stringify(e));
+      return false;
+    }
+  }
+
+  static stopTunBridge(): void {
+    try {
+      openp2p.stopTunBridge();
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, 'stopTunBridge failed: %{public}s', JSON.stringify(e));
+    }
+  }
+
   static stop(): void {
     try {
+      openp2p.stopTunBridge();
+      openp2p.stopTunPump();
       openp2p.stop();
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'stop failed: %{public}s', JSON.stringify(e));

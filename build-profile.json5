@@ -1,32 +1,28 @@
 {
   "app": {
-    "signingConfigs": [],
-    // 一份源码、两套产物：
-    // - default     OpenHarmony API 20（当前默认，沿用 OpenHarmony 签名）
-    // - harmonyos   HarmonyOS NEXT / 鸿蒙 6.0 API 20（需安装 HarmonyOS SDK，并在 DevEco 里配置 harmonyos 签名）
-    // 命令行示例：
-    //   hvigorw assembleHap -p product=default
-    //   hvigorw assembleHap -p product=harmonyos
+    "signingConfigs": [
+      {
+        "name": "default",
+        "material": {
+          "storeFile": "signature/OpenHarmony.p12",
+          "storePassword": "0000001C23E12F69722B1D3E9C283B47B8196059B4B27D9DA93F922436CF844B20689C312DA6A30F3BB4804A",
+          "keyAlias": "OpenHarmony Application Release",
+          "keyPassword": "0000001C8CC43011B72C4F07D2C78FF379D4D292245A43F41324561DD149B5B1E8407D3028924CD7693304C0",
+          "signAlg": "SHA256withECDSA",
+          "profile": "signature/openp2p.p7b",
+          "certpath": "signature/OpenHarmonyApplication.cer"
+        }
+      }
+    ],
     "products": [
       {
         "name": "default",
+        "signingConfig": "default",
         "compatibleSdkVersion": "20",
         "compileSdkVersion": "20",
         "runtimeOS": "OpenHarmony",
         "buildOption": {
           "nativeCompiler": "BiSheng",
-          "strictMode": {
-            "caseSensitiveCheck": true,
-            "useNormalizedOHMUrl": true
-          }
-        }
-      },
-      {
-        "name": "harmonyos",
-        "compatibleSdkVersion": "6.0.0(20)",
-        "compileSdkVersion": "6.0.0(20)",
-        "runtimeOS": "HarmonyOS",
-        "buildOption": {
           "strictMode": {
             "caseSensitiveCheck": true,
             "useNormalizedOHMUrl": true
@@ -52,12 +48,6 @@
           "name": "default",
           "applyToProducts": [
             "default"
-          ]
-        },
-        {
-          "name": "harmonyos",
-          "applyToProducts": [
-            "harmonyos"
           ]
         }
       ]

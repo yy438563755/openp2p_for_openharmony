@@ -7,10 +7,19 @@ const NativeMock: Record<string, Object> = {
   },
   'getNodeName': () => '',
   'getSdwanConfig': () => new ArrayBuffer(0),
+  'getSdwanConfigAsync': async () => new ArrayBuffer(0),
   'ohosRead': (_pkt: ArrayBuffer | Uint8Array) => {
   },
   'ohosWrite': (_timeoutMs?: number, _maxLen?: number) => new ArrayBuffer(0),
+  'startTunPump': (_tunFd: number) => false,
+  'stopTunPump': () => {
+  },
+  'startTunBridgeHost': (_sockPath: string) => false,
+  'startTunBridgeDevice': (_sockPath: string, _tunFd: number) => false,
+  'stopTunBridge': () => {
+  },
   'nativeStatus': () => 'mock',
+  'lastError': () => '',
 };
 
 export default NativeMock;

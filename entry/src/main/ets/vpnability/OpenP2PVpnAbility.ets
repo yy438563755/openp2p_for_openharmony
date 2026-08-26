@@ -5,6 +5,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
 import { OpenP2PEngine } from '../model/OpenP2PEngine';
+import { EngineStatus, SessionStore } from '../model/SessionStore';
 
 const DOMAIN = 0x4F50;
 const TAG = 'OpenP2PVpn';
@@ -28,31 +29,31 @@ interface GatewayNetwork {
   prefix: number;
 }
 
+/** VPN process exclusively owns Go, the TUN fd, and the native pump. */
 export default class OpenP2PVpnAbility extends VpnExtensionAbility {
   private vpnConnection: vpnExtension.VpnConnection | undefined = undefined;
   private tunFd: number = -1;
   private running: boolean = false;
   private baseDir: string = '';
   private token: string = '';
+  private lastSdwanJson: string = '';
 
   onCreate(want: Want): void {
     hilog.info(DOMAIN, TAG, 'VpnAbility onCreate');
+    this.baseDir = this.context.filesDir;
     const params = want.parameters;
-    if (params !== undefined && params['baseDir'] !== undefined) {
-      this.baseDir = params['baseDir'] as string;
-    } else {
-      this.baseDir = this.context.filesDir;
+    let tokenFromWant = '';
+    if (params !== undefined) {
+      if (params['token'] !== undefined) {
+        tokenFromWant = params['token'] as string;
+      }
     }
-    if (params !== undefined && params['token'] !== undefined) {
-      this.token = params['token'] as string;
-    } else {
-      this.token = '';
-    }
-    this.vpnConnection = vpnExtension.createVpnConnection(this.context);
-
     this.running = true;
+    this.vpnConnection = vpnExtension.createVpnConnection(this.context);
+    this.writeStatus('starting', false, '正在启动 VPN 内核…');
+    this.startStatusLoop();
     setTimeout(() => {
-      this.ensureEngineThenLoop();
+      this.bootstrap(tokenFromWant);
     }, 0);
   }
 
@@ -60,17 +61,36 @@ export default class OpenP2PVpnAbility extends VpnExtensionAbility {
     hilog.info(DOMAIN, TAG, 'VpnAbility onDestroy');
     this.running = false;
     this.closeTun();
+    this.writeStatus('stopped', false, 'VPN 已停止');
     try {
+      // StopModule exits only the dedicated :vpn process.
       OpenP2PEngine.stop();
     } catch (_e) {
     }
   }
 
-  private async ensureEngineThenLoop(): Promise<void> {
+  private async bootstrap(tokenFromWant: string): Promise<void> {
+    const tokenFromStore = await SessionStore.loadToken(this.context);
+    this.token = (tokenFromWant && tokenFromWant.length > 0) ? tokenFromWant : tokenFromStore;
+    hilog.info(DOMAIN, TAG, 'bootstrap VPN-owned engine tokenLen=%{public}d', this.token.length);
+
     if (!OpenP2PEngine.isStarted()) {
+      if (!this.token || this.token.length === 0 || this.token === '0') {
+        hilog.error(DOMAIN, TAG, 'empty token, cannot runAsModule');
+        this.writeStatus('error', false, 'Token 为空');
+        return;
+      }
+      this.writeStatus('connecting', false, '正在连接控制台…');
       const ok = await OpenP2PEngine.runAsModule(this.baseDir, this.token, 0, 1);
-      hilog.info(DOMAIN, TAG, 'engine start in vpn process: %{public}s', String(ok));
+      hilog.info(DOMAIN, TAG, 'engine start in vpn process: %{public}s lastError=%{public}s',
+        String(ok), OpenP2PEngine.lastError());
+      if (!ok) {
+        const detail = OpenP2PEngine.lastError();
+        this.writeStatus('error', false, detail.length > 0 ? detail : 'VPN 进程登录失败');
+        return;
+      }
     }
+    this.writeStatus('online', OpenP2PEngine.isOnline(), '控制台已连接，等待 SD-WAN…');
     await this.loopSdwanAndTun();
   }
 
@@ -78,46 +98,72 @@ export default class OpenP2PVpnAbility extends VpnExtensionAbility {
     while (this.running) {
       try {
         hilog.info(DOMAIN, TAG, 'waiting SD-WAN config...');
-        const cfgBuf = OpenP2PEngine.getSdwanConfig();
+        const cfgBuf = await OpenP2PEngine.getSdwanConfigAsync();
         const decoder = util.TextDecoder.create('utf-8');
         const jsonStr = decoder.decodeToString(new Uint8Array(cfgBuf));
+        if (jsonStr.length === 0) {
+          hilog.warn(DOMAIN, TAG, 'empty SD-WAN config, retry');
+          await this.sleep(1000);
+          continue;
+        }
+        if (jsonStr === this.lastSdwanJson && this.tunFd >= 0) {
+          hilog.info(DOMAIN, TAG, 'same SD-WAN config, keep existing TUN fd=%{public}d', this.tunFd);
+          continue;
+        }
         hilog.info(DOMAIN, TAG, 'got SD-WAN config len=%{public}d', jsonStr.length);
         this.closeTun();
+        await this.sleep(300);
         await this.setupVpn(jsonStr);
-        await this.pumpTun();
+        if (this.tunFd < 0) {
+          await this.sleep(1000);
+          continue;
+        }
+        const pumpOk = OpenP2PEngine.startTunPump(this.tunFd);
+        hilog.info(DOMAIN, TAG, 'tun pump started=%{public}s tunFd=%{public}d', String(pumpOk), this.tunFd);
+        this.writeStatus(pumpOk ? 'ready' : 'error', OpenP2PEngine.isOnline(),
+          pumpOk ? 'VPN 数据面就绪' : 'TUN pump 启动失败');
+        this.lastSdwanJson = jsonStr;
       } catch (e) {
         hilog.error(DOMAIN, TAG, 'sdwan/tun loop error: %{public}s', JSON.stringify(e));
+        this.lastSdwanJson = '';
         await this.sleep(1000);
       }
     }
   }
 
+  private readTextFile(name: string): string {
+    try {
+      const path = this.baseDir.endsWith('/') ? this.baseDir + name : this.baseDir + '/' + name;
+      if (!fs.accessSync(path)) {
+        return '';
+      }
+      const stat = fs.statSync(path);
+      const file = fs.openSync(path, fs.OpenMode.READ_ONLY);
+      const buf = new ArrayBuffer(stat.size);
+      fs.readSync(file.fd, buf);
+      fs.closeSync(file);
+      return util.TextDecoder.create('utf-8', { ignoreBOM: true }).decodeWithStream(new Uint8Array(buf));
+    } catch (_e) {
+      return '';
+    }
+  }
+
   private makeNetAddress(ip: string): connection.NetAddress {
-    const addr: connection.NetAddress = {
-      address: ip,
-      family: 1,
-      port: 0
-    };
-    return addr;
+    return { address: ip, family: 1, port: 0 };
   }
 
   private makeLinkAddress(ip: string, prefixLength: number): vpnExtension.LinkAddress {
-    const link: vpnExtension.LinkAddress = {
-      address: this.makeNetAddress(ip),
-      prefixLength: prefixLength
-    };
-    return link;
+    return { address: this.makeNetAddress(ip), prefixLength: prefixLength };
   }
 
   private makeRoute(destIp: string, prefixLength: number): vpnExtension.RouteInfo {
-    const route: vpnExtension.RouteInfo = {
+    return {
       interface: 'vpn-tun',
       destination: this.makeLinkAddress(destIp, prefixLength),
       gateway: this.makeNetAddress('0.0.0.0'),
       hasGateway: false,
       isDefaultRoute: false
     };
-    return route;
   }
 
   private async setupVpn(jsonStr: string): Promise<void> {
@@ -125,12 +171,19 @@ export default class OpenP2PVpnAbility extends VpnExtensionAbility {
       throw new Error('vpnConnection is null');
     }
     const info = JSON.parse(jsonStr) as SdwanInfo;
-    const myName = OpenP2PEngine.getNodeName();
+    let myName = '';
+    try {
+      myName = OpenP2PEngine.getNodeName();
+    } catch (_e) {
+      myName = '';
+    }
+    if (!myName || myName.length === 0) {
+      myName = this.readTextFile('node_name.txt').trim();
+    }
     const mtu = info.mtu && info.mtu > 0 ? info.mtu : 1420;
 
     const addresses: Array<vpnExtension.LinkAddress> = [];
     const routes: Array<vpnExtension.RouteInfo> = [];
-
     const nodes = info.Nodes ?? [];
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
@@ -148,47 +201,29 @@ export default class OpenP2PVpnAbility extends VpnExtensionAbility {
         }
       }
     }
-
     const gwNet = this.networkFromGateway(info.gateway ?? '');
     if (gwNet !== undefined) {
       routes.push(this.makeRoute(gwNet.ip, gwNet.prefix));
     }
-
+    if (addresses.length === 0) {
+      hilog.error(DOMAIN, TAG, 'no address for node=%{public}s, skip vpn create', myName);
+      return;
+    }
     const config: vpnExtension.VpnConfig = {
       addresses: addresses,
       routes: routes,
       dnsAddresses: ['119.29.29.29', '2400:3200::1'],
       mtu: mtu
     };
-
     this.tunFd = await this.vpnConnection.create(config);
-    hilog.info(DOMAIN, TAG, 'vpn create tunFd=%{public}d', this.tunFd);
-  }
-
-  private async pumpTun(): Promise<void> {
-    const readBuf = new ArrayBuffer(4096);
-    while (this.running && this.tunFd >= 0) {
-      try {
-        const n = fs.readSync(this.tunFd, readBuf);
-        if (n > 0) {
-          OpenP2PEngine.ohosRead(readBuf.slice(0, n));
-        }
-      } catch (_e) {
-        // no data
-      }
-
-      const out = OpenP2PEngine.ohosWrite(50, 4096);
-      if (out.byteLength > 0) {
-        try {
-          fs.writeSync(this.tunFd, out);
-        } catch (e) {
-          hilog.error(DOMAIN, TAG, 'tun write failed: %{public}s', JSON.stringify(e));
-        }
-      }
-    }
+    hilog.info(DOMAIN, TAG, 'vpn create tunFd=%{public}d addr=%{public}s', this.tunFd, addresses[0].address.address);
   }
 
   private closeTun(): void {
+    try {
+      OpenP2PEngine.stopTunPump();
+    } catch (_e) {
+    }
     if (this.tunFd >= 0) {
       try {
         fs.closeSync(this.tunFd);
@@ -198,6 +233,10 @@ export default class OpenP2PVpnAbility extends VpnExtensionAbility {
     }
     try {
       this.vpnConnection?.destroy();
+    } catch (_e) {
+    }
+    try {
+      this.vpnConnection = vpnExtension.createVpnConnection(this.context);
     } catch (_e) {
     }
   }
@@ -228,14 +267,42 @@ export default class OpenP2PVpnAbility extends VpnExtensionAbility {
       (netInt >>> 8) & 0xff,
       netInt & 0xff
     ].join('.');
-    const result: GatewayNetwork = {
-      ip: ip,
-      prefix: prefix
-    };
-    return result;
+    return { ip: ip, prefix: prefix };
   }
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private writeStatus(state: string, online: boolean, detail: string): void {
+    let node = '';
+    if (OpenP2PEngine.isStarted()) {
+      node = OpenP2PEngine.getNodeName();
+    }
+    const status: EngineStatus = {
+      state: state,
+      online: online,
+      detail: detail,
+      node: node,
+      tunFd: this.tunFd,
+      probe: OpenP2PEngine.isStarted() ? OpenP2PEngine.getProbeStatus() : '尚未探测',
+      updatedAt: Date.now()
+    };
+    SessionStore.saveStatus(this.context, status);
+  }
+
+  private startStatusLoop(): void {
+    const tick = (): void => {
+      if (!this.running) {
+        return;
+      }
+      const online = OpenP2PEngine.isOnline();
+      const detail = online
+        ? (this.tunFd >= 0 ? 'VPN 数据面就绪' : '控制台在线，等待虚拟组网…')
+        : 'VPN 进程正在连接控制台…';
+      this.writeStatus(this.tunFd >= 0 ? 'ready' : (online ? 'online' : 'connecting'), online, detail);
+      setTimeout(tick, 2000);
+    };
+    setTimeout(tick, 500);
   }
 }
